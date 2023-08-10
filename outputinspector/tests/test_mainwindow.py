@@ -41,6 +41,8 @@ else:
 
 class TestMainWindow(unittest.TestCase):
     def test_main(self):
+        import outputinspector
+        outputinspector.ENABLE_GUI = True
         mainwindow.main()
 
 
