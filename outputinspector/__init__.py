@@ -11,11 +11,15 @@ import json
 from pprint import pformat
 from subprocess import Popen, PIPE
 
+
 MODULE_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.dirname(MODULE_DIR)
 my_path = os.path.realpath(__file__)
 if __name__ == "__main__":
     sys.path.insert(0, REPO_DIR)
+
+from outputinspector.settings import Settings  # noqa: E402
+
 # print("[outputinspector] loading", file=sys.stderr)
 ENABLE_GUI = False
 """
@@ -32,11 +36,12 @@ from outputinspector.noqttk import (
 )
 """
 verbosity = 1
-max_verbosity = 2  # helps construct verbosities during set_verbosity
+max_verbosity = 2  # helps construct verbosity levels during set_verbosity
 TMP = "/tmp"
 if platform.system() == "Windows":
     TMP = os.environ['TEMP']
     # profile is set further down (such as HOME)
+
 
 def warn(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -87,16 +92,14 @@ def set_verbosity(level):
     Set verbosity to 1 for verbose messages and 2 for debug messages.
     '''
     global verbosity
-    verbosities = [True, False] + list(range(max_verbosity+1))
-    if level not in verbosities:
+    verbosity_levels = [True, False] + list(range(max_verbosity+1))
+    if level not in verbosity_levels:
         raise ValueError(
             "{} is not valid. Verbosity should be one of: {}."
-            "".format(level, verbosities)
+            "".format(level, verbosity_levels)
         )
     verbosity = level
 
-
-from outputinspector.settings import Settings
 
 profile = None
 AppsData = None
@@ -130,7 +133,7 @@ STACK_LOWER = "LOWER"
 probably not pointing to the relevant code.'''
 TOKEN_FILE = 0
 '''*< linedef[TOKEN_FILE] is the opener for the file path (blank if
-the file path starts at the begginning of the line). '''
+the file path starts at the beginning of the line). '''
 TOKEN_PARAM_A = 1
 '''*< linedef[TOKEN_PARAM_A] is the first coordinate token (blank
 if none, as grep-- -n is automatically added if you use the included
@@ -161,6 +164,8 @@ ROLE_LOWER = UserRole + 3
 ROLE_COLLECTED_LINE = UserRole + 4
 ROLE_DETAILS = UserRole + 5
 QMainWindow = None  # Only necessary for subclasses.
+
+
 def set_ui_mode(enable_gui):
     prefix = "[outputinspector] "
     mode_caption = "GUI" if enable_gui else "CLI"
@@ -168,8 +173,8 @@ def set_ui_mode(enable_gui):
     if enable_gui:
         echo0(prefix+"- To use CLI, only import OutputInspector.")
     else:
-        echo0(prefix+"- Make a subclass that inherits OutputInspector and tk.Frame"
-              " to use a GUI.")
+        echo0(prefix+"- Make a subclass that inherits OutputInspector"
+              " and tk.Frame to use a GUI.")
     global QListWidgetItem
     global QVariant
     global QBrush
@@ -214,10 +219,10 @@ def caller_info(skip=2):
     start = 0 + skip
     if len(stack) < start + 1:
         return ''
-    parentframe = stack[start][0]
+    parent_frame = stack[start][0]
 
-    # module and packagename.
-    module_info = inspect.getmodule(parentframe)
+    # module and package name.
+    module_info = inspect.getmodule(parent_frame)
     module = None
     if module_info:
         mod = module_info.__name__.split('.')
@@ -227,20 +232,20 @@ def caller_info(skip=2):
 
     # class name.
     klass = None
-    if 'self' in parentframe.f_locals:
-        klass = parentframe.f_locals['self'].__class__.__name__
+    if 'self' in parent_frame.f_locals:
+        klass = parent_frame.f_locals['self'].__class__.__name__
 
     # method or function name.
     caller = None
-    if parentframe.f_code.co_name != '<module>':  # top level usually
-        caller = parentframe.f_code.co_name
+    if parent_frame.f_code.co_name != '<module>':  # top level usually
+        caller = parent_frame.f_code.co_name
 
     # call line.
-    line = parentframe.f_lineno
+    line = parent_frame.f_lineno
 
     # Remove reference to frame
     # See: https://docs.python.org/3/library/inspect.html#the-interpreter-stack
-    del parentframe
+    del parent_frame
 
     return package, module, klass, caller, line
 
@@ -264,14 +269,20 @@ class OutputInspector:
     To allow either to be used, this class must behave like Widget but
     avoid inheriting it so this class works as a secondary superclass
     where primary superclass is either MainWindow which is already a
-    widget, usually a notqtk widget that is not CLI-compatible like
+    widget, usually a noqttk widget that is not CLI-compatible like
     OutputInspector is if used directly instead of as a superclass.
+
+    TODO: Add other attributes documented C++ Qt-like way: '''*< ...'''
 
     Attributes:
         errorsListFileName (string): The named source of the errors.
             In the C++ version this was local to the constructor, but
             the constructor was split (see load_stdin_or_file for what
             was also there).
+        m_VerboseParsing (bool): Enable line-by-line parser output
+        inTimer: Read standard input lines regularly
+        m_actualJump: Store the jump in case the file & line# are on
+            a different line than the error, as with nose test output.
     """
 
     _errorPathRoots = [
@@ -279,7 +290,8 @@ class OutputInspector:
     ]
     ERROR_VSCODE_FMT = 'File "{file}", line {row}'
     # ^ resolves https://github.com/Poikilos/outputinspector/issues/26
-    # such as 'File "/home/owner/git/world_clock/worldclocktk/__init__.py", line 232, in <module>'
+    # such as
+    # 'File "~/git/world_clock/worldclocktk/__init__.py", line 232, in <module>'  # noqa: E501
 
     def addChildWidget(self, widget):
         if not hasattr(self, '_children'):
@@ -294,7 +306,6 @@ class OutputInspector:
             #   (before __init__ is finished)
             self._layouts = []
         self._layouts.append(layout)
-
 
     @classmethod
     def addRoot(cls, path):
@@ -314,12 +325,14 @@ class OutputInspector:
         self.errorsListFileName = None
         # self.name = "inspector"
         # leave out name to prevent _ui_subtree from constructing one
+
         def parentWidget(self):
             class UhOh:
                 def __init__(self):
                     echo0(prefix+"INFO: OutputInspector has no parent."
                           " Do not use its parentWidget().")
-                    # unless set to something else other than this function later
+                    # unless set to something else other than this function
+                    #   later
                     pass
             # Behave as a QWidget, but only to this extent.
             #   This must be done here since the ui loader
@@ -350,11 +363,13 @@ class OutputInspector:
 
         # explicit MainWindow(QWidget *parent = 0)
         # ~MainWindow()
-        #void addLine(QString, bool)
-        #void init(QString)
-        #bool isFatalSourceError(QString)
-        #{} lineInfo( QString line, actualJump, actualJumpLine, isPrevCallPrevLine)
-        #void lineInfo(std.map<QString, info, sLineOriginal, actualJump, actualJumpLine, isPrevCallPrevLine)
+        # void addLine(QString, bool)
+        # void init(QString)
+        # bool isFatalSourceError(QString)
+        # {} lineInfo( QString line, actualJump, actualJumpLine,
+        #   isPrevCallPrevLine)
+        # void lineInfo(std.map<QString, info, sLineOriginal, actualJump,
+        #   actualJumpLine, isPrevCallPrevLine)
         # QString absPathOrSame(QString filePath)
         self.settings = None
         self.m_EnableTabDebugMsg = False
@@ -365,7 +380,7 @@ class OutputInspector:
         etc. '''
         # ifdef QT_DEBUG
         #     self.m_Verbose = True
-        #     self.m_VerboseParsing = True; '''*< Enable line-by-line parser output '''
+        #     self.m_VerboseParsing = True;
         # else:
         self.m_Verbose = False
         self.m_VerboseParsing = True
@@ -378,7 +393,7 @@ class OutputInspector:
         # self._ui = None
         # void CompensateForEditorVersion()
 
-        self.m_ToDoFlags = ["TODO","FIXME"]
+        self.m_ToDoFlags = ["TODO", "FIXME"]
         self.m_Error = "Error"
         self.m_Warning = "Warning"
         self.m_CommentToken = "#"
@@ -389,9 +404,6 @@ class OutputInspector:
         self.lineCount = 0  # TODO: eliminate this?
         self.m_NonBlankLineCount = 0
         self.m_ActualJump = ""
-        '''*< Store the jump in case the file & line# are on
-        a different line than the error, as with
-        nosetests. '''
         self.m_ActualJumpLine = ""
         self.m_IsJumpLower = True
 
@@ -399,21 +411,20 @@ class OutputInspector:
         self.m_ActualJumpRow = ""
         self.m_ActualJumpColumn = ""
 
-        # void pushWarnings();'''*< Push warnings to the GUI. '''
-
-        self.inTimer = None  # *< Read standard input lines regularly
+        self.inTimer = None
 
         self.iErrors = 0
         self.iWarnings = 0
         self.iTODOs = 0
         self.m_Files = []
 
-        #endif # MAINWINDOW_H
+        # endif # MAINWINDOW_H
 
         # : QMainWindow(parent)
         # , self._ui(new Ui.MainWindow)
         # self._ui.setupUi(self)
-        # configDir = QStandardPaths.StandardLocation(QStandardPaths.ConfigLocation())
+        # configDir = QStandardPaths.StandardLocation(
+        #     QStandardPaths.ConfigLocation())
         # QStandardPaths.StandardLocation(QStandardPaths.HomeLocation)
         # ^ same as QDir.homePath()
         # See <https:#stackoverflow.com/questions/32525196/
@@ -440,11 +451,14 @@ class OutputInspector:
         self.settings.setIfMissing("Kate2TabWidth", 8)
         self.settings.setIfMissing("CompilerTabWidth", 6)
         self.settings.setIfMissing("ShowWarningsLast", False)
-        # TODO: Implement ShowWarningsLast (but ignore it and behave as if it were
-        # False if there is anything in stdin).
+        # TODO: Implement ShowWarningsLast (but ignore it and behave as
+        #   if it were False if there is anything in stdin).
         self.settings.setIfMissing("FindTODOs", True)
         if self.settings.contains("kate"):
-            changed = self.settings.setIfMissing("editor", self.settings.getString("kate"))
+            changed = self.settings.setIfMissing(
+                "editor",
+                self.settings.getString("kate")
+            )
             self.settings.remove("kate")
             self.settings.sync()
             if changed:
@@ -468,9 +482,10 @@ class OutputInspector:
 
         # def init(self, errorsListFileName):
         '''
-        formats with "\n" at end must be AFTER other single-param formats that have
-        same TOKEN_FILE and PARSE_PARAM_A, because "\n" is forced
-        (which would leave extra stuff at the end if there are more tokenings)
+        formats with "\n" at end must be AFTER other single-param
+        formats that have same TOKEN_FILE and PARSE_PARAM_A, because
+        "\n" is forced
+        (which would leave extra stuff at the end if there are more tokens)
         '''
         from collections import namedtuple
         # Lowercase means has the feature, uppercase means does not:
@@ -588,7 +603,7 @@ class OutputInspector:
             "",  # PARSE_STACK
             "Minetest warning 'inside a function'",  # PARSE_DESCRIPTION
         )
-        #/ TODO: change to "WARNING\[Server\].* accessed at " (requires:
+        # TODO: change to "WARNING\[Server\].* accessed at " (requires:
         # implementing regex)
         # linedef[PARSE_COLLECT] = COLLECT_REUSE
         self.enclosures.append(linedef)
@@ -660,11 +675,11 @@ class OutputInspector:
 
         self.sInternalFlags.append("/site-packages/")
         internalS = "/usr/lib/python2.7/site-packages/nose/importer.py"
-        assert(contains_any(internalS, self.sInternalFlags))
+        assert contains_any(internalS, self.sInternalFlags)
 
         self.sSectionBreakFlags.append("--------")
         breakS = "---------------------"
-        assert(contains_any(breakS, self.sSectionBreakFlags))
+        assert contains_any(breakS, self.sSectionBreakFlags)
 
         echo1("debug stream is active.")
         # pinfo("pinfo stream is active.")
@@ -679,7 +694,7 @@ class OutputInspector:
             # for i in range(len(itList)):
             #     pinfo("    - {}".format(itList[i]))
             #
-            assert(len(itList) == PARSE_PARTS_COUNT)
+            assert len(itList) == PARSE_PARTS_COUNT
             # pinfo("  items.size(): {}".format(itList.size()))
             if self.m_Verbose:
                 pinfo("  items: ['" + "', '".join(itList) + "']")
@@ -702,7 +717,7 @@ class OutputInspector:
 
     @classmethod
     def unmangledPath(cls, path):
-        """Replace elipsis (3 or more dots) with the missing parts
+        """Replace ellipsis (3 or more dots) with the missing parts
         if a similar file can be found.
 
         Args:
@@ -711,12 +726,13 @@ class OutputInspector:
                 that exists in cwd or any path added via addRoot.
         """
         prefix = "[unmangledPath] "
-        # a.k.a. remove_elipsis
-        # QRegularExpression literalDotsRE("\\.\\.\\.+") '''*< Match 2 dots followed by more. '''
+        # a.k.a. remove_ellipsis
+        # QRegularExpression literalDotsRE("\\.\\.\\.+") '''*< 2 dots + more
+        #   '''
         # FIXME: make below act like above
-        literalDotsRE = re.compile("\\.\\.\\.+")  #*< Match 2 dots followed by more.
+        literalDotsRE = re.compile("\\.\\.\\.+")  # *< Match 2 dots + more
         slashRE = re.compile(re.escape(os.path.sep))  # match slash
-        #   (not os.pathsep with divides mutlple full paths!)
+        #   (not os.pathsep with divides multiple full paths!)
         match = literalDotsRE.match(path)
         # TODO: capturedEnd technically uses the last element in:
         '''
@@ -734,7 +750,8 @@ class OutputInspector:
             tryOffsets.append(1)
             tryOffsets.append(0)
             for thisMatch in slashRE.finditer(path):
-                tryOffsets.append(thisMatch.span()[0]+1)  # look after *every* slash
+                # check after *every* slash
+                tryOffsets.append(thisMatch.span()[0]+1)
             for tryOffset in tryOffsets:
                 tryPath = path[end+tryOffset:]
                 if cls.absPathOrNone(tryPath):
@@ -771,16 +788,17 @@ class OutputInspector:
         echo0("[{}] {}".format(title, msg))
 
     def isFatalSourceError(self, line):
-        '''
-        @brief Check whether your parser reports that your code has a fatal error.
-        @param line stderr output from your parser
-        @return
+        '''Check whether your parser reports that your code has a fatal error.
+        Arguments:
+            line (str): stderr output from your parser
         '''
         return (
             ("Can't open" in line)  # jshint couldn't find a source file
-            or ("Too many errors" in line) # jshint already showed the error for self line, can't display more errors
-            or ("could not be found" in line) # mcs couldn't find a source file
-            or ("compilation failed" in line) # mcs couldn't compile the sources
+            or ("Too many errors" in line)  # jshint already showed the error
+                                            #   for self line, can't display
+                                            #   more errors
+            or ("could not be found" in line)  # mcs couldn't find source file
+            or ("compilation failed" in line)  # mcs couldn't compile sources
         )
 
     def __del__(self):
@@ -797,7 +815,8 @@ class OutputInspector:
 
     def init(self, errorsListFileName):
         prefix = "[init] "
-        if not (self.settings.contains("xEditorOffset") or self.settings.contains("yEditorOffset")):
+        if not (self.settings.contains("xEditorOffset")
+                or self.settings.contains("yEditorOffset")):
             self.CompensateForEditorVersion()
         output_names = ["err.txt", "out.txt"]
         if (errorsListFileName is None) or (len(errorsListFileName) == 0):
@@ -806,14 +825,15 @@ class OutputInspector:
             if os.path.isfile(tryPath):
                 errorsListFileName = tryPath
                 pinfo(prefix+"detected \"{}\"...examining..."
-                      "".format(tryPath))
+                      .format(tryPath))
             # else leave it None so stdin will be tried
             #   (setting it if doesn't exist would cause missing file error)!
         self.lineCount = 0
+        self.errorsListFileName = None
         if self.load_stdin_or_file(errorsListFileName):
             # ^ Sets self.errorsListFileName if errorsListFileName exists.
             self.inTimer = QTimer(self)
-            self.inTimer.setInterval(500);  # milliseconds
+            self.inTimer.setInterval(500)  # milliseconds
             connect(self.inTimer, self.inTimer.timeout, self, self.readInput)
             self.inTimer.start()
         # end init
@@ -839,14 +859,16 @@ class OutputInspector:
         # self._ui.mainListWidget is a QListWidget
         # setCentralWidget(self._ui.mainListWidget)
         # self._ui.mainListWidget.setSizePolicy(QSizePolicy.)
-        # OutputInspectorSleepThread.msleep(150); # wait for stdin (doesn't work)
+        # OutputInspectorSleepThread.msleep(150); # wait for stdin (nonworking)
         # TODO: if self.has_stdin():
         if errorsListFileName is None:
             return True
         if not os.path.isfile(errorsListFileName):
             # if std.cin.rdbuf().in_avail() < 1:
             title = "Output Inspector - Help"
-            msg = my_path + ": Output Inspector cannot read the output file due to permissions or other read error (tried \"./" + errorsListFileName + "\")."
+            msg = my_path + (": Output Inspector cannot read the output file"
+                             " due to permissions or other read error"
+                             " (tried \"./" + errorsListFileName + "\").")
             self.showinfo(title, msg)
             # self.addLine(title + ":" + msg, True)
         self.errorsListFileName = errorsListFileName
@@ -866,7 +888,8 @@ class OutputInspector:
             # my_path = QCoreApplication.applicationFilePath()
             # my_path = os.getcwd()
             # title = "Output Inspector - Help"
-            # msg = my_path + ": Output Inspector cannot find the output file to process (tried \"./" + errorsListFileName + "\")."
+            # msg = my_path + ": Output Inspector cannot find the output
+            #   file to process (tried \"./" + errorsListFileName + "\")."
             # self.showinfo(title, msg)
             # self.addLine(title + ":" + msg, True)
 
@@ -881,15 +904,21 @@ class OutputInspector:
 
         if not self.settings.getBool("ExitOnNoErrors"):
             if self.m_LineCount == 0:
-                lwiNew = QListWidgetItem("#" + errorsListFileName + ": INFO (generated by outputinspector) 0 lines in file")
+                lwiNew = QListWidgetItem(
+                    "#{}: INFO (generated by outputinspector) 0 lines in file"
+                    .format(self.errorsListFileName)
+                )
                 lwiNew.setForeground(self.brushes["Default"])
                 self._ui.mainListWidget.addItem(lwiNew)
 
             elif self.m_NonBlankLineCount == 0:
-                lwiNew = QListWidgetItem("#" + errorsListFileName + ": INFO (generated by outputinspector) 0 non-blank lines in file")
+                lwiNew = QListWidgetItem(
+                    "#{}: INFO (generated by outputinspector)"
+                    " 0 non-blank lines in file"
+                    .format(self.errorsListFileName)
+                )
                 lwiNew.setForeground(self.brushes["Default"])
                 self._ui.mainListWidget.addItem(lwiNew)
-
 
         # else hide errors since will exit anyway if no errors
         sMsg = "Errors: " + sNumErrors + "; Warnings:" + sNumWarnings
@@ -903,19 +932,22 @@ class OutputInspector:
                 # aptr.exit(); # doesn't work (QApplication*)
                 # aptr.quit(); # doesn't work
                 # aptr.closeAllWindows(); # doesn't work
-                # if the event loop is not running, function (QCoreApplication.exit()) does nothing
+                # if the event loop is not running, function
+                #   (QCoreApplication.exit()) does nothing
                 sys.exit(1)
 
     def addLine(self, line, enablePush):
-        '''
-        This method will add or collect a line. This method sets some related private
-        variables for the purpose of connecting a line (such as a callstack line)
-        to a previous line.
+        '''Add a line
+        Add or collect a line & set some related private variables for
+        the purpose of connecting a line (such as a callstack line) to a
+        previous line.
 
-        @brief Add a line.
-        @param line a line from standard output or error from a program
-        @param enablePush Push the line to the GUI right away (This is best for
-               when reading information from standard input).
+        Arguments:
+            line (str): a line from standard output or error from a
+                program
+            enablePush (bool): Push the line to the GUI right away (This
+                is best for when reading information from standard
+                input).
         '''
         prefix = "[addLine] "
         echo2(prefix+"analyzing")
@@ -929,7 +961,12 @@ class OutputInspector:
             if len(line.strip()) > 0:
                 self.m_NonBlankLineCount += 1
             if self.isFatalSourceError(line):
-                self._ui.mainListWidget.addItem(QListWidgetItem(line + " <your compiler (or other tool) recorded self fatal or summary error before outputinspector ran>", self._ui.mainListWidget))
+                self._ui.mainListWidget.addItem(
+                    QListWidgetItem(line + " <your compiler (or other tool)"
+                                    " recorded self fatal or summary error"
+                                    " before outputinspector ran>",
+                                    self._ui.mainListWidget)
+                )
             elif contains_any(line, self.sSectionBreakFlags):
                 self.m_ActualJump = ""
                 self.m_ActualJumpLine = ""
@@ -941,7 +978,8 @@ class OutputInspector:
 
             else:
                 # lineInfo does the actual parsing:
-                self.lineInfo(info, line, self.m_ActualJump, self.m_ActualJumpLine, True)
+                self.lineInfo(info, line, self.m_ActualJump,
+                              self.m_ActualJumpLine, True)
 
                 if info["master"] == "True":
                     self.m_ActualJump = info['file']
@@ -964,7 +1002,8 @@ class OutputInspector:
                     isWarning = True
                     sColorPrefix = "Warning"
 
-                # do not specify self._ui.mainListWidget on new, will be added automatically
+                # Do not specify self._ui.mainListWidget on new: will be added
+                #   automatically.
                 lwi = QListWidgetItem(line)
                 if len(self.m_ActualJumpRow) > 0:
                     lwi.setData(ROLE_ROW, QVariant(self.m_ActualJumpRow))
@@ -976,13 +1015,15 @@ class OutputInspector:
                 if len(self.m_ActualJump) > 0:
                     if not os.path.isfile(self.m_ActualJump):
                         raise FileNotFoundError(self.m_ActualJump)
-                    lwi.setData(ROLE_COLLECTED_FILE, QVariant(self.m_ActualJump))
+                    lwi.setData(ROLE_COLLECTED_FILE,
+                                QVariant(self.m_ActualJump))
                     if info["lower"] == "True":
                         lwi.setForeground(self.brushes["TracebackNotTop"])
                     elif info["good"] == "True":
                         lwi.setForeground(self.brushes[sColorPrefix])
                     else:
-                        lwi.setForeground(self.brushes[sColorPrefix + "Details"])
+                        lwi.setForeground(
+                            self.brushes[sColorPrefix + "Details"])
                 else:
                     if info.get('file'):
                         if not os.path.isfile(info['file']):
@@ -1001,14 +1042,15 @@ class OutputInspector:
                 lwi.setData(ROLE_COLLECTED_LINE, QVariant(self.m_MasterLine))
                 _storedPath = lwi.data(ROLE_COLLECTED_FILE).get()
                 if not os.path.isfile(_storedPath):
-                    if ".lua" in line and not ".lua]" in line:
+                    if ".lua" in line and ".lua]" not in line:
                         # Avoid crashing with .lua] because that is
                         #   not a full path, but a partial path.
                         #   Example: "2023-08-13 09:49:30: WARNING[Main]:
                         #   [tab_online.lua] not loading password since
                         #   address=nil, port=nil, playername=nil"
-                        raise RuntimeError("Got invalid path '%s' not in '%s' in line: `%s`"
-                                           % (_storedPath, os.getcwd(), line))
+                        raise RuntimeError(
+                            "Got invalid path '%s' not in '%s' in line: `%s`"
+                            % (_storedPath, os.getcwd(), line))
                 lwi.setData(ROLE_DETAILS, QVariant(line != self.m_MasterLine))
                 lwi.setData(ROLE_LOWER, QVariant(info["lower"]))
                 if info["good"] == "True":
@@ -1067,10 +1109,13 @@ class OutputInspector:
                                     #   compiler's line numbering starts
                                     #   with 1.
                                     iToDoFound = -1
-                                    iCommentFound = sSourceLine.find(self.m_CommentToken, 0)
+                                    iCommentFound = sSourceLine.find(
+                                        self.m_CommentToken, 0)
                                     if iCommentFound > -1:
                                         for i in range(len(self.m_ToDoFlags)):
-                                            iToDoFound = sSourceLine.find(self.m_ToDoFlags[i], iCommentFound + 1)
+                                            iToDoFound = sSourceLine.find(
+                                                self.m_ToDoFlags[i],
+                                                iCommentFound + 1)
                                             if iToDoFound > -1:
                                                 break
 
@@ -1078,8 +1123,12 @@ class OutputInspector:
                                         sNumLine = str(iSourceLineFindToDo)
                                         processedCol = iToDoFound
                                         for citedI in range(len(sSourceLine)):
-                                            if sSourceLine[citedI:citedI+1] == "\t":
-                                                processedCol += (self.settings.getInt("CompilerTabWidth") - 1)
+                                            if (sSourceLine[citedI:citedI+1]
+                                                    == "\t"):
+                                                processedCol += (
+                                                    self.settings.getInt(
+                                                        "CompilerTabWidth") - 1
+                                                )
                                             else:
                                                 break
 
@@ -1108,13 +1157,13 @@ class OutputInspector:
                                     # end while not at end of source file
                                 if self.m_Verbose:
                                     echo1("outputinspector finished"
-                                          " reading sourcecode")
+                                          " reading source code")
                                 if self.m_Verbose:
                                     echo1(
                                         "(processed {} line(s))"
                                         "".format(iSourceLineFindToDo)
                                     )
-                                # end with open sourcecode
+                                # end with open source code
 
                             # end if list does not already contain self
                             # file
@@ -1181,6 +1230,7 @@ class OutputInspector:
             # self.config.setValue("yEditorOffset", -1)
 
     def pushWarnings(self):
+        """Push warnings to the GUI"""
         if len(self.lwiWarnings) > 0:
             for it in self.lwiWarnings:
                 self._ui.mainListWidget.addItem(it)
@@ -1284,18 +1334,25 @@ class OutputInspector:
                         #     fileTokenI + len(fileToken),
                         # )
                         match = paramAThenNumRE.search(line, fileTokenI+len(fileToken))
-                        # ^ either None or <re.Match object; span=(86, 89), match=':46'>
-                        #   where match.span() is the slice (tuple; exclusive end)
+                        # ^ either None or <re.Match object; span=(86,
+                        #   89), match=':46'> where match.span() is the
+                        #   slice (tuple; exclusive end)
                         # ^ search looks anywhere, match looks at beginning.
                         #   Also, only *compiled* regex objects have pos arg!
                         number = None
                         if match:
-                            number = line[match.span()[0]+len(linedef.paramA):match.span()[1]]
+                            number = line[
+                                match.span()[0]+len(linedef.paramA):match.span()[1]]
                             if not number.isnumeric():
-                                echo0(prefix+"Skipped parser [%s] since %s is not a number in %s"
-                                      % (parserI, pformat(number), pformat(line)))
+                                echo0(
+                                    prefix+"Skipped parser [%s]"
+                                    " since %s is not a number in %s"
+                                    % (parserI, pformat(number),
+                                       pformat(line)))
                                 continue
-                            earlyMatch = paramARE.search(line, fileTokenI+len(fileToken))
+                            earlyMatch = paramARE.search(
+                                line,
+                                fileTokenI+len(fileToken))
                             if earlyMatch:
                                 if earlyMatch.span()[0] < match.span()[0]:
                                     # [0] is start, [1] is end of slice
@@ -1304,10 +1361,12 @@ class OutputInspector:
                                     #     % (earlyMatch, line)
                                     # )
                                     match = earlyMatch
-                                    # ^ Use the first colon even if no number after it,
-                                    #   in case this is a stray colon in a format without
-                                    #   a number.
-                                    # TODO: Only do this if no ender OR not isnumeric
+                                    # ^ Use the first colon even if no
+                                    #   number after it, in case this is
+                                    #   a stray colon in a format
+                                    #   without a number.
+                                    # TODO: Only do this if no ender OR
+                                    #   not isnumeric
 
                         if not match:
                             paramATokenI = line.find(
@@ -1328,17 +1387,19 @@ class OutputInspector:
                                         paramAToken,
                                     )
                                     # skip past first colon such as in
-                                    # "2023-08-12 20:53:08: ERROR[Main]: GUIEngine:
-                                    # execution of menu script failed: Failed to load
-                                    # and run script from
-                                    # /home/owner/minetest-rsync/bin/../builtin/init.lua:"
+                                    #   "2023-08-12 20:53:08:
+                                    #   ERROR[Main]: GUIEngine:
+                                    #   execution of menu script failed:
+                                    #   Failed to load and run script
+                                    #   from
+                                    #   ~/minetest-rsync/bin/../builtin/init.lua:"
                                     if lastColonI > 0 and lastColonI > paramATokenI:
                                         lastSpaceI = line.rfind(" ", 0, lastColonI)
                                         if lastSpaceI >= 0:
                                             tryPath = line[lastSpaceI+1:lastColonI]
                                             tryAbsPath = self.unmangledPath(tryPath)
                                             if not os.path.isfile(tryAbsPath):
-                                                if ".lua" in line and not ".lua]" in line:
+                                                if ".lua" in line and ".lua]" not in line:
                                                     raise RuntimeError(
                                                         "Path '%s' not found"
                                                         " in `%s`"
@@ -1366,10 +1427,13 @@ class OutputInspector:
                                                 #   variable name instead)
                                                 # else avoid crashing on line
                                                 #   that doesn't have a file:
-                                                #   "2023-08-13 09:51:19: ERROR[AsyncWorker-0]:
+                                                #   "2023-08-13
+                                                #   09:51:19:
+                                                #   ERROR[AsyncWorker-0]:
                                                 #   servers.minetest.org:32000/list?
                                                 #   proto_version_min=25&proto_version_max=32
-                                                #   not found (Couldn't resolve host name)
+                                                #   not found (Couldn't
+                                                #   resolve host name)
                                                 #   (response code 0)"
                                             else:
                                                 info['before'] = line[:lastSpaceI+1]
@@ -1387,33 +1451,41 @@ class OutputInspector:
                                     if not os.path.isfile(tryAbsPath):
                                         raise FileNotFoundError(tryAbsPath)
                             else:
-                                noParamWhy = ("paramA (line number usually) is not followed by %s"
-                                            % paramAToken)
+                                noParamWhy = ("paramA (line number usually)"
+                                              " is not followed by %s"
+                                              % paramAToken)
                             # This is ok. See usage of noParamWhy.
                             if paramAToken in line[:paramATokenI]:
                                 echo0(
-                                    prefix+"Warning: Got token in %s before paramA (token=%s, info=%s)"
-                                    % (pformat(line[:paramATokenI]), paramAToken, info)
+                                    prefix+"Warning: Got token in %s"
+                                    " before paramA (token=%s, info=%s)"
+                                    % (pformat(line[:paramATokenI]),
+                                       paramAToken, info)
                                 )
                         else:
                             info['before'] = line[:fileTokenI+len(fileToken)]
                             info['after'] = line[match.span()[1]:]  # [1]:after
                             # ^ adjusted later if other params are found
                             paramATokenI = match.span()[0]
-                            # FIXME: Remove each FileNotFoundError but collect &
-                            #   display what parser failed and what the line
+                            # FIXME: Remove each FileNotFoundError but collect
+                            #   & display what parser failed and what the line
                             #   content was or save the lineinfo object
                             #   reference.
                             if paramAToken in line[:paramATokenI]:
                                 raise NotImplementedError(
-                                    "Got token in %s before paramA (token=%s, info=%s)"
-                                    % (pformat(line[:paramATokenI]), paramAToken, info)
+                                    "Got token in %s before paramA"
+                                    " (token=%s, info=%s)"
+                                    % (pformat(line[:paramATokenI]),
+                                       paramAToken, info)
                                 )
-                            # if not line[fileI+len(info['file']+len(paramAToken)):paramATokenI].isnumeric():
+                            # if not line[
+                            #         fileI+len(info['file']+len(paramAToken))
+                            #         :paramATokenI].isnumeric():
                             #     raise NotImplementedError("Not numeric: ")
                             #     paramATokenI = -1
                     elif len(endParamsToken) > 0:
-                        # If there is no paramAToken, use endParamsToken to get paramA
+                        # If there is no paramAToken, use endParamsToken
+                        #   to get paramA
                         paramATokenI = line.find(endParamsToken)
                         if paramATokenI < 0:
                             paramATokenI = len(line)
@@ -1486,7 +1558,7 @@ class OutputInspector:
 
                             if endParamsTokenI > -1:
                                 if endParamsToken != "\n":
-                                    info['after'] = line[endParamsTokenI+len(endParamsToken):]
+                                    info['after'] = line[endParamsTokenI+len(endParamsToken):]  # noqa: E501
                                 else:
                                     info['after'] = line[endParamsTokenI:]
                                     # ^ technically correct but always ""
@@ -1533,12 +1605,14 @@ class OutputInspector:
                                        % (parserI, itList, line))
                                 # WARNING: pformat may wrap lines!
                                 tryRow = line[paramAI:paramBTokenI]
-                                if (len(tryRow) > 0) and (not tryRow.isnumeric()):
-                                    # Reject the match if not a number to not count
-                                    #   stray enders, such as a colon in a later part
-                                    #   of the error.
-                                    #   But if len is 0, that is ok (in that
-                                    #   (case row not required, so not wrong).
+                                if ((len(tryRow) > 0)
+                                        and (not tryRow.isnumeric())):
+                                    # Reject the match if not a number
+                                    #   to not count stray enders, such
+                                    #   as a colon in a later part of
+                                    #   the error. But if len is 0, that
+                                    #   is ok (in that (case row not
+                                    #   required, so not wrong).
                                     #
                                     continue
 
@@ -1557,7 +1631,10 @@ class OutputInspector:
                                         )
                                     )
                                 if "ERROR[" in line and ".lua" in line and linedef[PARSE_DESCRIPTION] == "Minetest Lua traceback":
-                                    raise RuntimeError("The program failed to parse a Minetest Lua traceback: `%s`" % line)
+                                    raise RuntimeError(
+                                        "The program failed to parse"
+                                        " a Minetest Lua traceback: `%s`"
+                                        % line)
                         else:
                             if self.m_VerboseParsing:
                                 pinfo(
@@ -1568,18 +1645,22 @@ class OutputInspector:
                                               line)
                                 )
                             if "ERROR[" in line and ".lua" in line and linedef[PARSE_DESCRIPTION] == "Minetest Lua traceback":
-                                raise RuntimeError("The program failed to parse a Minetest Lua traceback: `%s`" % line)
+                                raise RuntimeError(
+                                    "The program failed to parse"
+                                    " a Minetest Lua traceback: `%s`" % line)
                     else:
                         if self.m_VerboseParsing:
                             pinfo("    no pre-paramA '{}' >= {} (reason: {})"
-                                    "".format(paramAToken,
-                                              (fileTokenI + len(fileToken)),
-                                              noParamWhy))
-                        # This is actually ok even in Minetest Lua Traceback. The
-                        #   first line of the whole traceback has no line, such as
-                        #   "2023-08-12 19:29:51: ERROR[Main]: GUIEngine: execution
-                        #   of menu script failed: Failed to load and run script
-                        #   from /home/owner/minetest-rsync/bin/../builtin/init.lua:"
+                                  .format(paramAToken,
+                                          (fileTokenI + len(fileToken)),
+                                          noParamWhy))
+                        # This is actually ok even in Minetest Lua
+                        #   Traceback. The first line of the whole
+                        #   traceback has no line, such as "2023-08-12
+                        #   19:29:51: ERROR[Main]: GUIEngine: execution
+                        #   of menu script failed: Failed to load and
+                        #   run script from
+                        #   ~/minetest-rsync/bin/../builtin/init.lua:"
                         # so don't do:
                         # if "ERROR[" in line and ".lua" in line and linedef[PARSE_DESCRIPTION] == "Minetest Lua traceback":
                         #     raise RuntimeError("The program failed to parse a Minetest Lua traceback since couldn't find '%s' at or after %s (after fileToken '%s') in: `%s`" % (paramAToken, fileTokenI + len(fileToken), fileToken, line))
@@ -1591,12 +1672,15 @@ class OutputInspector:
                         pinfo("  no pre-File '{}' >= START"
                               "".format(fileToken))
                     if "ERROR[" in line and ".lua" in line and linedef[PARSE_DESCRIPTION] == "Minetest Lua traceback":
-                        raise RuntimeError("The program failed to parse a Minetest Lua traceback: `%s`"
-                                           % pformat(line))
+                        raise RuntimeError(
+                            "The program failed to parse"
+                            " a Minetest Lua traceback: `%s`"
+                            % pformat(line))
 
         if usedParserI is None:
             raise NotImplementedError(
-                "Even the last (most lax) parser didn't find anything useful for: %s"
+                "Even the last (most lax) parser didn't find anything useful"
+                " for: %s"
                 % pformat(line)
             )
         else:
@@ -1639,7 +1723,8 @@ class OutputInspector:
                             and filePath.endswith('\''))):
                         filePath = filePath[1:-1]
 
-                echo0(prefix+"[debug]"
+                echo0(
+                    prefix+"[debug]"
                     " file path before unmangling (endWhy=%s): %s"
                     % (endWhy, filePath))
                 filePath = OutputInspector.unmangledPath(filePath)
@@ -1655,7 +1740,10 @@ class OutputInspector:
                     debugMsg = ("(endWhy=%s, tryEndToken=%s)"
                                 % (endWhy, pformat(tryEndToken)))
                     if 'after' not in info:
-                        info['after'] = debugMsg + line[tryEndI+len(tryEndToken):]
+                        info['after'] = (
+                            "%s%s"
+                            % (debugMsg, line[tryEndI+len(tryEndToken):])
+                        )
                 # else it was basically parsed by a less-strict parser,
                 #   so forget about it since there is no file. Example:
                 #   "2023-08-12 21:32:18: ERROR[Main]: Subgame specified
@@ -1666,9 +1754,9 @@ class OutputInspector:
                           % (pformat(line)))
                     # raise FileNotFoundError("filePath=%s"
                     #                         % pformat(filePath))
-                    # It is ok. It is probably just a stray ":". Even if it is a
-                    #   path, there is no way to utilize it if unmangledPath
-                    #   didn't work:
+                    # It is ok. It is probably just a stray ":". Even if
+                    #   it is a path, there is no way to utilize it if
+                    #   unmangledPath didn't work:
                     filePath = None
                     info['file'] = None  # Avoid FileNotFoundError later
                 # end if 'file' *not* set even after all parsers are done
@@ -1734,7 +1822,7 @@ class OutputInspector:
 
         if info["good"] == "True":
             if (len(actualJump) > 0) and (info["master"] == "False"):
-                echo1("INFO: nosetests output was detected, the line is"
+                echo1("INFO: nose test output was detected, the line is"
                       " not first line of a known multi-line error"
                       " format, flagging as details (must be"
                       " a sample line of code or something).")
@@ -1819,13 +1907,15 @@ class OutputInspector:
             citedRowS = (item.data(ROLE_ROW)).toString()
             citedColS = (item.data(ROLE_COL)).toString()
             info = self.getLineInfo(actualJumpLine, actualJump,
-                                         actualJumpLine, False)
+                                    actualJumpLine, False)
             if os.path.isfile(filePath):  # Should already be unmangled
                 # FIXME: this basically always triggers:
                 # if info.get('file') is None:
-                #     raise NotImplementedError("info['file'] and info['file'] = '%s' is missing" % filePath)
+                #     raise NotImplementedError("info['file'] and info['file']
+                #         = '%s' is missing" % filePath)
                 # elif not os.path.isfile(info['file']):
-                #     raise NotImplementedError("info['file'] = '%s' is missing" % filePath)
+                #     raise NotImplementedError("info['file'] = \
+                #         '%s' is missing" % filePath)
                 if ((info.get('file') is None) or
                         (not os.path.isfile(info['file']))):
                     info['file'] = filePath.strip()
@@ -1889,7 +1979,7 @@ class OutputInspector:
         for sCwd in cls._errorPathRoots:
             # sCwd = os.getcwd()  # current() returns a QDir object
             setuptoolsTryPkgPath = os.path.join(sCwd, os.path.basename(sCwd))
-            # ^ Look in somedir/somedir instead of only somedir
+            # ^ Look in dir_name/dir_name instead of only dir_name
             # - If should use filePath, remove the setuptoolsTryPkgPath join
             #   call below (do not add the filename when generating
             #   absFilePath if filename already part of
@@ -1908,15 +1998,17 @@ class OutputInspector:
         #   (subwidget is arg, rather than parent being arg.widget the tk way)
         # echo0("dir(%s item)=%s" % (type(event).__name__, dir(event)))
         # ^ tkinter Event contains the following public members:
-        #   char, delta, 'height', 'keycode', 'keysym', 'keysym_num', 'num',
-        #   'send_event', 'serial', 'state', 'time', 'type', 'widget', 'width',
-        #   'x', 'x_root', 'y', 'y_root'
+        #   char, delta, 'height', 'keycode', 'keysym', 'keysym_num',
+        #   'num', 'send_event', 'serial', 'state', 'time', 'type',
+        #   'widget', 'width', 'x', 'x_root', 'y', 'y_root'
         thisListWidget = event.widget
         items = thisListWidget.selectedItems()
         if len(items) < 1:
-            raise NotImplementedError("No items were selected during double-click")
+            raise NotImplementedError(
+                "No items were selected during double-click")
         elif len(items) > 1:
-            raise NotImplementedError("Multiple items were selected during double-click")
+            raise NotImplementedError(
+                "Multiple items were selected during double-click")
         item = items[0]
 
         line = item.text()
@@ -1970,7 +2062,7 @@ class OutputInspector:
                 '''*< This is the current line number while the loop
                 reads the entire cited file. '''
                 with open(absFilePath, 'r') as qtextNow:
-                    #| QFile.Translate
+                    # | QFile.Translate
                     for rawL in qtextNow:
                         line = rawL.rstrip()
                         if readCitedI == ((citedRow - yEditorOffset) - 1):
@@ -1986,35 +2078,75 @@ class OutputInspector:
                             if tabCount > 0:
                                 tabDebugMsg = str(tabCount)
                                 tabDebugMsg = "tabs:" + tabDebugMsg
-                                # if subtracted 1 for kate 2, 1st character after a line with 1 tab is currently citedCol==6, it is 7
-                                # if subtracted 1 for kate 2, 2nd character after a line with 1 tab is currently citedCol==7, it is 8
-                                # if subtracted 1 for kate 2, 1st character after a line with 2tabs is currently citedCol==12, it is 13
-                                # if subtracted 1 for kate 2, 2nd character after a line with 2tabs is currently citedCol==13, it is 14
+                                # if subtracted 1 for kate 2,
+                                #   1st character after a line with 1 tab
+                                #   is currently citedCol==6, it is 7
+                                # if subtracted 1 for kate 2,
+                                #   2nd character after a line with 1 tab
+                                #   is currently citedCol==7, it is 8
+                                # if subtracted 1 for kate 2,
+                                #   1st character after a line with 2tabs
+                                #   is currently citedCol==12, it is 13
+                                # if subtracted 1 for kate 2,
+                                #   2nd character after a line with 2tabs
+                                #   is currently citedCol==13, it is 14
                                 if self.m_KateMajorVer < 3:
                                     citedCol -= xEditorOffset
                                 tabDebugMsg += "; citedColS-old:" + citedColS
-                                citedCol -= tabCount * (self.settings.getInt("CompilerTabWidth") - 1)
-                                #citedCol+=xEditorOffset
+                                citedCol -= (
+                                    tabCount
+                                    * (self.settings.getInt("CompilerTabWidth")
+                                       - 1)
+                                )
+                                # citedCol+=xEditorOffset
                                 citedColS = str(citedCol)
                                 tabDebugMsg += "; citedCol-abs:" + citedColS
-                                # if above worked, citedCol is now an absolute character (counting tabs as 1 character)
-                                # if subtracted 1 for kate 2, 1st character after a line with 1 tab has now become citedCol==1, it is 2 (when using compiler tabwidth of 6 and 5 was subtracted [==(1*(6-1))]
-                                # if subtracted 1 for kate 2, 2nd character after a line with 1 tab has now become citedCol==2, it is 3 (when using compiler tabwidth of 6 and 5 was subtracted [==(1*(6-1))]
-                                # if subtracted 1 for kate 2, 1st character after a line with 2tabs has now become citedCol==2, it is 3 (when using compiler tabwidth of 6 and 10 was subtracted [==(1*(6-1))]
-                                # if subtracted 1 for kate 2, 2nd character after a line with 2tabs has now become citedCol==3, it is 4 (when using compiler tabwidth of 6 and 10 was subtracted [==(1*(6-1))]
+                                # if above worked, citedCol is now an absolute
+                                #   character (counting tabs as 1 character)
+                                # if subtracted 1 for kate 2,
+                                #   1st character after a line with 1 tab
+                                #   has now become citedCol==1, it is 2
+                                #   (when using compiler tabwidth of 6
+                                #    and 5 was subtracted [==(1*(6-1))]
+                                # if subtracted 1 for kate 2,
+                                #   2nd character after a line with 1 tab
+                                #   has now become citedCol==2, it is 3
+                                #   (when using compiler tabwidth of 6
+                                #    and 5 was subtracted [==(1*(6-1))]
+                                # if subtracted 1 for kate 2,
+                                #   1st character after a line with 2tabs
+                                #   has now become citedCol==2, it is 3
+                                #   (when using compiler tabwidth of 6
+                                #    and 10 was subtracted [==(1*(6-1))]
+                                # if subtracted 1 for kate 2,
+                                #   2nd character after a line with 2tabs
+                                #   has now become citedCol==3, it is 4
+                                #   (when using compiler tabwidth of 6
+                                #    and 10 was subtracted [==(1*(6-1))]
                                 if self.m_KateMajorVer < 3:
-                                    # Kate 2.5.9 reads a 'c' argument value of 0 as the beginning of the line and 1 as the first character after the leading tabs
+                                    # Kate 2.5.9 reads a 'c' argument
+                                    #   value of 0 as the beginning of the
+                                    #   line and 1 as the first character
+                                    #   after the leading tabs
                                     if citedCol < tabCount:
                                         citedCol = 0
                                     else:
-                                        # citedCol currently starts at 1 at the beginning of the line
+                                        # citedCol currently starts at 1
+                                        #   at the beginning of the line
                                         citedCol -= (tabCount)
                                         citedColS = str(citedCol)
-                                        tabDebugMsg += "; citedCol-StartAt1-rel-to-nontab:" + citedColS
-                                        # citedCol now starts at 1 starting from the first text after tabs
+                                        tabDebugMsg += \
+                                            ("; citedCol-StartAt1"
+                                             "-rel-to-nontab:"
+                                             + citedColS)
+                                        # citedCol now starts at 1 starting
+                                        #   from the first text after tabs
                                         regeneratedCol = 1
                                         tabDebugMsg += "; skips:"
-                                        # This approximates how Kate 2 traverses tabs (the 'c' argument actually can't reach certain positions directly after the tabs):
+                                        # This approximates how Kate 2
+                                        #   traverses tabs (the 'c' argument
+                                        #   actually can't reach certain
+                                        #   positions directly after the tabs):
                                         if tabCount > 2:
                                             citedCol += tabCount - 2
                                         for tryTabI in range(citedCol):
@@ -2027,13 +2159,11 @@ class OutputInspector:
                                                     self.config.getInt("Kate2TabWidth")
                                                     (1+self.config.getInt("Kate2TabWidth")*position)'''
                                                     tabDebugMsg += "-"
-
-
                                             else:
                                                 regeneratedCol += 1
 
                                         citedCol = regeneratedCol
-                                        # + ( (tabCount>3andtabCount<6)
+                                        # + ( (tabCount>3 and tabCount<6)
                                         #     ? tabCount : 0 )
                                         # end accounting for kate#
                                         # gibberish column translation
@@ -2119,7 +2249,7 @@ class OutputInspector:
                         ("%s Try setting the value editor = in %s"
                          % (editor_msg, self.settings.fileName())))
                 process = Popen([self.settings.getString("editor")]
-                                 + qslistArgs)
+                                + qslistArgs)
 
                 # if self.m_Verbose:
                 self._ui.statusBar.showMessage(commandMsg, 0)
