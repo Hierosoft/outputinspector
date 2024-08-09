@@ -14,6 +14,31 @@
 			"-p",
 			"*test*.py",
 			"./tests"
+		],
+		"cSpell.words": [
+			"callstack",
+			"geany",
+			"keysym",
+			"klass",
+			"linedef",
+			"MAINWINDOW",
+			"Minetest",
+			"msleep",
+			"noqt",
+			"noqttk",
+			"noquote",
+			"ogrep",
+			"outputinspector",
+			"pinfo",
+			"playername",
+			"qfile",
+			"qslist",
+			"qtext",
+			"rdbuf",
+			"Rosenfield",
+			"stackoverflow",
+			"unmangled",
+			"worldclocktk"
 		]
 	}
 }
