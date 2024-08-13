@@ -130,7 +130,7 @@ class MainWindow(OutputInspector, ttk.Frame):  # ttk.Frame
         # Which *parent* is used in constructor supersedes pack order to
         #   determine order if nesting varies for widgets packed!
         #   - Constructor is called by ui file parser! Unless:
-        self.upper_box = tk.Frame(self)
+        self.upper_box = ttk.Frame(self)
         self.upper_box.pack(
             side=tk.TOP,
             fill=tk.BOTH,
@@ -138,7 +138,7 @@ class MainWindow(OutputInspector, ttk.Frame):  # ttk.Frame
             anchor=tk.N,
         )
         container = self.upper_box
-        self.scrollbar = tk.Scrollbar(container, orient="vertical")
+        self.scrollbar = ttk.Scrollbar(container, orient="vertical")
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.BOTH)
         self._ui.mainListWidget = QListWidget(
             container,
@@ -152,7 +152,7 @@ class MainWindow(OutputInspector, ttk.Frame):  # ttk.Frame
             expand=True,
             anchor=tk.N,
         )
-        # lb = tk.Listbox(root, width=50, height=20, yscrollcommand=scrollbar.set)
+        # lb = ttk.Listbox(root, width=50, height=20, yscrollcommand=scrollbar.set)
         # self.mainListWidget.pack()
         self._ui.mainListWidget.bind(
             "<Double-Button-1>",
