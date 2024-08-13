@@ -152,7 +152,7 @@ class MainWindow(OutputInspector, ttk.Frame):  # ttk.Frame
             expand=True,
             anchor=tk.N,
         )
-        # lb = ttk.Listbox(root, width=50, height=20, yscrollcommand=scrollbar.set)
+        # lb = tk.Listbox(root, width=50, height=20, yscrollcommand=scrollbar.set)
         # self.mainListWidget.pack()
         self._ui.mainListWidget.bind(
             "<Double-Button-1>",
