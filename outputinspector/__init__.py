@@ -818,14 +818,15 @@ class OutputInspector:
         if not (self.settings.contains("xEditorOffset")
                 or self.settings.contains("yEditorOffset")):
             self.CompensateForEditorVersion()
-        output_names = ["err.txt", "out.txt"]
+        output_names = ["err.txt", "out.txt", "debug.txt"]
         if (errorsListFileName is None) or (len(errorsListFileName) == 0):
             echo0("* detecting any of {}...".format(output_names))
-            tryPath = "debug.txt"
-            if os.path.isfile(tryPath):
+            for tryPath in output_names:
+                if not os.path.isfile(tryPath):
+                    continue
                 errorsListFileName = tryPath
-                pinfo(prefix+"detected \"{}\"...examining..."
-                      .format(tryPath))
+                pinfo(prefix+"detected \"{}\"...examining...".format(tryPath))
+                break
             # else leave it None so stdin will be tried
             #   (setting it if doesn't exist would cause missing file error)!
         self.lineCount = 0
