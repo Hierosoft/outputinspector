@@ -120,6 +120,7 @@ class MainWindow(OutputInspector, ttk.Frame):  # ttk.Frame
             anchor=tk.N,  # n, ne, e, se, s, sw, w, nw, or center
         )
         self._ui = WidgetCollection()  # ignore Qt ui file
+        # (otherwise see _ui_loader)
         # self._ui = self  # REMOVED since loses ones added by noqt ui loader
         # ^ _ui is only for graphical mode (must be set after
         #   OutputInspector.__init__(self))
@@ -129,14 +130,24 @@ class MainWindow(OutputInspector, ttk.Frame):  # ttk.Frame
         # Which *parent* is used in constructor supersedes pack order to
         #   determine order if nesting varies for widgets packed!
         #   - Constructor is called by ui file parser! Unless:
-        scrollbar = tk.Scrollbar(root, orient="vertical")
-        self._ui.mainListWidget = QListWidget(
-            self,
-            yscrollcommand=scrollbar.set,
+        self.upper_box = tk.Frame(self)
+        self.upper_box.pack(
+            side=tk.TOP,
+            fill=tk.BOTH,
+            expand=True,
+            anchor=tk.N,
         )
+        container = self.upper_box
+        self.scrollbar = tk.Scrollbar(container, orient="vertical")
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.BOTH)
+        self._ui.mainListWidget = QListWidget(
+            container,
+            yscrollcommand=self.scrollbar.set,
+        )
+        self.scrollbar.config(command=self._ui.mainListWidget.yview)
         # self._ui.mainListWidget = QListView(self)  # instead set in ui by noqt
         self._ui.mainListWidget.pack(
-            side=tk.TOP,
+            side=tk.LEFT,
             fill=tk.BOTH,
             expand=True,
             anchor=tk.N,
