@@ -1,0 +1,16 @@
+#!/home/owner/git/outputinspector/.venv/bin/python
+# -*- coding: utf-8 -*-
+import os
+import re
+import sys
+
+SCRIPTS_DIR = os.path.dirname(os.path.realpath(__file__))
+REPO_DIR = os.path.dirname(SCRIPTS_DIR)
+
+sys.path.insert(0, REPO_DIR)
+
+from outputinspector.mainwindow import main  # noqa: E402
+
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+    sys.exit(main())
