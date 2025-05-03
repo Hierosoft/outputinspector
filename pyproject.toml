@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "outputinspector"
+version = "0.1.0"
+description = "Analyze and highlight compiler and linter output with clickable errors and TODOs."
+readme = { file = "readme.md", content-type = "text/markdown" }
+requires-python = ">=3.6"
+authors = [
+    { name = "Poikilos", email = "poikilos@users.noreply.github.com" }
+]
+license = "GPL-3.0-or-later"
+keywords = ["IDE", "debugging", "linter", "compiler", "log viewer", "error inspector"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Text Editors :: Integrated Development Environments (IDE)",
+    "Topic :: Utilities",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10"
+]
+
+[project.urls]
+Homepage = "https://hierosoft.com"
+Repository = "https://github.com/Hierosoft/outputinspector"
+Issues = "https://github.com/Hierosoft/outputinspector/issues"
+
+[project.scripts]
+outputinspector = "outputinspector.mainwindow:main"
+
+[tool.setuptools]
+packages = ["outputinspector"]
