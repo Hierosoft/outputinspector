@@ -353,7 +353,7 @@ class OutputInspector:
             set_ui_mode(True)
             echo0(prefix+"detected GUI mode")
         # public:
-        # static QString unmangledPath(QString path)
+        # static QString reconstructedPath(QString path)
 
         self.m_DebugBadHints = True
         self.sInternalFlags = []
@@ -716,7 +716,7 @@ class OutputInspector:
         return
 
     @classmethod
-    def unmangledPath(cls, path):
+    def reconstructedPath(cls, path):
         """Replace ellipsis (3 or more dots) with the missing parts
         if a similar file can be found.
 
@@ -725,7 +725,7 @@ class OutputInspector:
                 ...er/minetest-rsync/bin/../builtin/mainmenu/tab_online.lua
                 that exists in cwd or any path added via addRoot.
         """
-        prefix = "[unmangledPath] "
+        prefix = "[reconstructedPath] "
         # a.k.a. remove_ellipsis
         # QRegularExpression literalDotsRE("\\.\\.\\.+") '''*< 2 dots + more
         #   '''
@@ -870,8 +870,9 @@ class OutputInspector:
             msg = my_path + (": Output Inspector cannot read the output file"
                              " due to permissions or other read error"
                              " (tried \"./" + errorsListFileName + "\").")
-            self.showinfo(title, msg)
-            # self.addLine(title + ":" + msg, True)
+            # self.showinfo(title, msg)  # commented: Do not interrupt stdin!
+            # FIXME: This is redundant with "cannot find the output file"
+            self.addLine(title + ":" + msg, True)
         self.errorsListFileName = errorsListFileName
         if self.errorsListFileName is not None:
             echo0('* reading "{}"'.format(errorsListFileName))
@@ -1086,7 +1087,7 @@ class OutputInspector:
 
                 if self.settings.getBool("FindTODOs"):
                     if info["good"] == "True":
-                        sFileX = ""  # = unmangledPath(info['file'])
+                        sFileX = ""  # = reconstructedPath(info['file'])
                         sFileX = self.absPathOrSame(sFileX)
                         # =line[0:line.find("(")]
                         if sFileX not in self.m_Files:
@@ -1382,7 +1383,7 @@ class OutputInspector:
                                     % (paramAToken, paramAToken)
                                 )
                                 tryPath = line[fileTokenI+len(fileToken):paramATokenI].strip()
-                                tryAbsPath = self.unmangledPath(tryPath)
+                                tryAbsPath = self.reconstructedPath(tryPath)
                                 if not os.path.isfile(tryAbsPath):
                                     lastColonI = line.rfind(
                                         paramAToken,
@@ -1398,7 +1399,7 @@ class OutputInspector:
                                         lastSpaceI = line.rfind(" ", 0, lastColonI)
                                         if lastSpaceI >= 0:
                                             tryPath = line[lastSpaceI+1:lastColonI]
-                                            tryAbsPath = self.unmangledPath(tryPath)
+                                            tryAbsPath = self.reconstructedPath(tryPath)
                                             if not os.path.isfile(tryAbsPath):
                                                 if ".lua" in line and ".lua]" not in line:
                                                     raise RuntimeError(
@@ -1726,9 +1727,9 @@ class OutputInspector:
 
                 echo0(
                     prefix+"[debug]"
-                    " file path before unmangling (endWhy=%s): %s"
+                    " file path before reconstructing (endWhy=%s): %s"
                     % (endWhy, filePath))
-                filePath = OutputInspector.unmangledPath(filePath)
+                filePath = OutputInspector.reconstructedPath(filePath)
                 if not os.path.isfile(filePath) and ".lua" in filePath:
                     raise RuntimeError(
                         "Could not find parsed filename '%s' in line: `%s`"
@@ -1757,7 +1758,7 @@ class OutputInspector:
                     #                         % pformat(filePath))
                     # It is ok. It is probably just a stray ":". Even if
                     #   it is a path, there is no way to utilize it if
-                    #   unmangledPath didn't work:
+                    #   reconstructedPath didn't work:
                     filePath = None
                     info['file'] = None  # Avoid FileNotFoundError later
                 # end if 'file' *not* set even after all parsers are done
@@ -1840,7 +1841,7 @@ class OutputInspector:
         The data source is stdin, err.txt, or manually added via
         addLine. In each case, addLine processed the data, but only the
         copy of the metadata in mainListWidget (not via getLineInfo)
-        has the unmangled path (TODO: fix this; getLineInfo works fine
+        has the reconstructed path (TODO: fix this; getLineInfo works fine
         when called by getLineInfo but not when called externally).
 
         addLine adds all of the metadata and must be done first (done
@@ -1909,7 +1910,7 @@ class OutputInspector:
             citedColS = (item.data(ROLE_COL)).toString()
             info = self.getLineInfo(actualJumpLine, actualJump,
                                     actualJumpLine, False)
-            if os.path.isfile(filePath):  # Should already be unmangled
+            if os.path.isfile(filePath):  # Should already be reconstructed
                 # FIXME: this basically always triggers:
                 # if info.get('file') is None:
                 #     raise NotImplementedError("info['file'] and info['file']
@@ -2338,7 +2339,10 @@ class OutputInspector:
 def main():
     prefix = "[main (testing only, import instead)] "
     inspector = OutputInspector()
-    echo0(prefix+"created a test OutputInspector")
+    echo0()
+    echo0()
+    echo0(prefix+"created a TEST OutputInspector instance")
+    echo0()
 
 
 if __name__ == "__main__":

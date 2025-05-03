@@ -65,7 +65,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [2.0.0] - 2020-03-13
 ### Added
 - a description (`PARSE_DESCRIPTION`) in the syntax `def`
-- `unmangledPath` (remove ellipsis!) resolves #5
+- `reconstructedPath` (remove ellipsis!) resolves #5
 
 ### Changed
 - Place the configuration into a separate class (See settings.h and
@@ -120,7 +120,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Handle Minetest Lua tracebacks (such as from debug.txt or stderr).
   - This feature requires the fix below.
   - :edit: This is improved now since issue #5 is closed
-    (enhancement: un-mangle a path containing an ellipsis)!
+    (enhancement: reconstruct a path containing an ellipsis)!
 
 ### Fixed
 - Handle `PARSE_MARKER_FILE` value not at the start of a line.

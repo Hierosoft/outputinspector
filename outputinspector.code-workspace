@@ -24,6 +24,7 @@
 			"MAINWINDOW",
 			"Minetest",
 			"msleep",
+			"nontab",
 			"noqt",
 			"noqttk",
 			"noquote",
@@ -31,13 +32,16 @@
 			"outputinspector",
 			"pinfo",
 			"playername",
+			"Poikilos",
 			"qfile",
 			"qslist",
 			"qtext",
 			"rdbuf",
 			"Rosenfield",
+			"setuptools",
 			"stackoverflow",
-			"unmangled",
+			"Subgame",
+			"tabwidth",
 			"worldclocktk"
 		]
 	}

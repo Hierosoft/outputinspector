@@ -223,7 +223,7 @@ class Settings:
             if key not in self.data.keys():
                 self.data[key] = value
                 changed = True
-                if self.autosave():
+                if self.autosave:
                     self.sync()
         else:
             self.sDebug += ("setIfMissing tried to set " + key
@@ -254,10 +254,15 @@ class Settings:
         return self.path
 
     def sync(self):
+        print("Saving {}".format(repr(self.path)))
         if self.data is None:
             warn("The settings data was not initialized before `sync`.")
             return False
         try:
+            settings_dir = os.path.dirname(self.path)
+            if not os.path.isdir(settings_dir):
+                print("Creating {}".format(repr(settings_dir)))
+                os.makedirs(settings_dir)
             with open(self.path, 'w') as outs:
                 for k, v in self.data.items():
                     outs.write("{}={}\n".format(k, v))
